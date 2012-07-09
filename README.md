@@ -18,7 +18,7 @@ Or install it yourself as:
 
 You know
 ```
-//=mousetrap
+//= require mousetrap
 ```
 
 ## Contributing
