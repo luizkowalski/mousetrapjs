@@ -1,6 +1,4 @@
-# Mousetrapjs
-
-TODO: Write a gem description
+# MousetrapJS
 
 ## Installation
 
@@ -18,7 +16,10 @@ Or install it yourself as:
 
 ## Usage
 
-TODO: Write usage instructions here
+You know
+```
+//=mousetrap
+```
 
 ## Contributing
 
