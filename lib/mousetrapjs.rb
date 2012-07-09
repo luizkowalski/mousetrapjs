@@ -1,5 +1,6 @@
 require "mousetrapjs/version"
 
 module Mousetrapjs
-  # Your code goes here...
+  class MousetrapEngine < Rails::Engine
+  end
 end
