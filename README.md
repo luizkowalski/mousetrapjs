@@ -1,4 +1,7 @@
 # MousetrapJS
+Mousetrap is a simple library for handling keyboard shortcuts in Javascript, with no external dependencies.
+Documentation can be found in [here](http://craig.is/killing/mice).
+
 
 ## Installation
 
@@ -16,15 +19,10 @@ Or install it yourself as:
 
 ## Usage
 
-You know
+Just add this line to your `application.js` file
+
 ```
 //= require mousetrap
 ```
 
-## Contributing
-
-1. Fork it
-2. Create your feature branch (`git checkout -b my-new-feature`)
-3. Commit your changes (`git commit -am 'Added some feature'`)
-4. Push to the branch (`git push origin my-new-feature`)
-5. Create new Pull Request
+Thanks to [ccampbel](https://github.com/ccampbell/mousetrap) for the hard work.
