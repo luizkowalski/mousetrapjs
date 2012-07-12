@@ -16,13 +16,17 @@
  * Mousetrap is a simple keyboard shortcut library for Javascript with
  * no external dependencies
  *
- * @preserve @version 1.1
+ * @version 1.1.1
  * @url craig.is/killing/mice
  */
 window.Mousetrap = (function() {
 
     /**
      * mapping of special keycodes to their corresponding keys
+     *
+     * everything in this dictionary cannot use keypress events
+     * so it has to be here to map to the correct keycodes for
+     * keyup/keydown events
      *
      * @type {Object}
      */
@@ -53,7 +57,9 @@ window.Mousetrap = (function() {
 
         /**
          * mapping for special characters so they can support
-         * keydown and keyup events
+         *
+         * this dictionary is only used incase you want to bind a
+         * keyup or keydown event to one of these keys
          *
          * @type {Object}
          */
@@ -81,6 +87,8 @@ window.Mousetrap = (function() {
          * back to the non shift equivelents
          *
          * this is so you can use keyup events with these keys
+         *
+         * note that this will only work reliably on US keyboards
          *
          * @type {Object}
          */
@@ -183,8 +191,8 @@ window.Mousetrap = (function() {
     /**
      * loop through to map numbers on the numeric keypad
      */
-    for (i = 96; i < 106; ++i) {
-        _MAP[i] = i - 96;
+    for (i = 0; i <= 9; ++i) {
+        _MAP[i + 96] = i;
     }
 
     /**
@@ -204,7 +212,7 @@ window.Mousetrap = (function() {
     }
 
     /**
-     * takes the event and returns the keycode
+     * takes the event and returns the key character
      *
      * @param {Event} e
      * @return {string}
@@ -268,14 +276,15 @@ window.Mousetrap = (function() {
     function _resetSequences(do_not_reset) {
         do_not_reset = do_not_reset || {};
 
-        var active_sequences = false;
+        var active_sequences = false,
+            key;
 
-        for (var key in _sequence_levels) {
-            if (!do_not_reset[key]) {
-                _sequence_levels[key] = 0;
+        for (key in _sequence_levels) {
+            if (do_not_reset[key]) {
+                active_sequences = true;
                 continue;
             }
-            active_sequences = true;
+            _sequence_levels[key] = 0;
         }
 
         if (!active_sequences) {
@@ -329,7 +338,7 @@ window.Mousetrap = (function() {
             // if this is a keypress event that means that we need to only
             // look at the character, otherwise check the modifiers as
             // well
-            if (action === 'keypress' || _modifiersMatch(modifiers, callback.modifiers)) {
+            if (action == 'keypress' || _modifiersMatch(modifiers, callback.modifiers)) {
 
                 // remove is used so if you change your mind and call bind a
                 // second time with a new function the first one is overwritten
@@ -373,13 +382,38 @@ window.Mousetrap = (function() {
     }
 
     /**
-     * fires a callback for a matching keycode
+     * actually calls the callback function
+     *
+     * if your callback function returns false this will use the jquery
+     * convention - prevent default and stop propogation on the event
+     *
+     * @param {Function} callback
+     * @param {Event} e
+     * @returns void
+     */
+    function _fireCallback(callback, e) {
+        if (callback(e) === false) {
+            if (e.preventDefault) {
+                e.preventDefault();
+            }
+
+            if (e.stopPropagation) {
+                e.stopPropagation();
+            }
+
+            e.returnValue = false;
+            e.cancelBubble = true;
+        }
+    }
+
+    /**
+     * handles a character key event
      *
      * @param {string} character
      * @param {Event} e
      * @returns void
      */
-    function _fireCallback(character, e) {
+    function _handleCharacter(character, e) {
 
         // if this event should not happen stop here
         if (_stop(e)) {
@@ -404,14 +438,14 @@ window.Mousetrap = (function() {
 
                 // keep a list of which sequences were matches for later
                 do_not_reset[callbacks[i]['seq']] = 1;
-                callbacks[i].callback(e);
+                _fireCallback(callbacks[i].callback, e);
                 continue;
             }
 
             // if there were no sequence matches but we are still here
-            // that means this is a regular match so we should fire then break
+            // that means this is a regular match so we should fire that
             if (!processed_sequence_callback && !_inside_sequence) {
-                callbacks[i].callback(e);
+                _fireCallback(callbacks[i].callback, e);
             }
         }
 
@@ -431,7 +465,7 @@ window.Mousetrap = (function() {
      */
     function _handleKey(e) {
 
-        // add which for key events
+        // normalize e.which for key events
         // @see http://stackoverflow.com/questions/4285627/javascript-keycode-vs-charcode-utter-confusion
         e.which = typeof e.which == "number" ? e.which : e.keyCode;
 
@@ -442,12 +476,12 @@ window.Mousetrap = (function() {
             return;
         }
 
-        if (e.type === 'keyup' && _ignore_next_keyup === character) {
+        if (e.type == 'keyup' && _ignore_next_keyup == character) {
             _ignore_next_keyup = false;
             return;
         }
 
-        _fireCallback(character, e);
+        _handleCharacter(character, e);
     }
 
     /**
@@ -468,7 +502,7 @@ window.Mousetrap = (function() {
      *
      * @returns void
      */
-    function _resetSequence() {
+    function _resetSequenceTimer() {
         clearTimeout(_reset_timer);
         _reset_timer = setTimeout(_resetSequences, 1000);
     }
@@ -515,7 +549,7 @@ window.Mousetrap = (function() {
 
         // modifier keys don't work as expected with keypress,
         // switch to keydown
-        if (action === 'keypress' && modifiers.length) {
+        if (action == 'keypress' && modifiers.length) {
             action = 'keydown';
         }
 
@@ -553,7 +587,7 @@ window.Mousetrap = (function() {
         var _increaseSequence = function(e) {
                 _inside_sequence = action;
                 ++_sequence_levels[combo];
-                _resetSequence();
+                _resetSequenceTimer();
             },
 
             /**
@@ -564,7 +598,7 @@ window.Mousetrap = (function() {
              * @returns void
              */
             _callbackAndReset = function(e) {
-                callback(e);
+                _fireCallback(callback, e);
 
                 // we should ignore the next key up if the action is key down
                 // or keypress.  this is so if you finish a sequence and
@@ -684,9 +718,9 @@ window.Mousetrap = (function() {
     }
 
     // start!
+    _addEvent(document, 'keypress', _handleKey);
     _addEvent(document, 'keydown', _handleKey);
     _addEvent(document, 'keyup', _handleKey);
-    _addEvent(document, 'keypress', _handleKey);
 
     return {
 
@@ -720,7 +754,7 @@ window.Mousetrap = (function() {
          * the keycombo+action has to be exactly the same as
          * it was defined in the bind method
          *
-         * @todo actually remove this from the _callbacks dictionary instead
+         * TODO: actually remove this from the _callbacks dictionary instead
          * of binding an empty function
          *
          * @param {string|Array} keys
