@@ -16,7 +16,7 @@
  * Mousetrap is a simple keyboard shortcut library for Javascript with
  * no external dependencies
  *
- * @version 1.1.1
+ * @version 1.1.2
  * @url craig.is/killing/mice
  */
 window.Mousetrap = (function() {
@@ -253,7 +253,7 @@ window.Mousetrap = (function() {
         }
 
         // stop for input, select, and textarea
-        return tag_name == 'INPUT' || tag_name == 'SELECT' || tag_name == 'TEXTAREA'/* || element.getAttribute('contenteditable')*/;
+        return tag_name == 'INPUT' || tag_name == 'SELECT' || tag_name == 'TEXTAREA' || (element.contentEditable && element.contentEditable == 'true');
     }
 
     /**
@@ -325,7 +325,7 @@ window.Mousetrap = (function() {
 
             // if this is a sequence but it is not at the right level
             // then move onto the next match
-            if (callback['seq'] && _sequence_levels[callback['seq']] != callback['level']) {
+            if (callback.seq && _sequence_levels[callback.seq] != callback.level) {
                 continue;
             }
 
@@ -342,7 +342,7 @@ window.Mousetrap = (function() {
 
                 // remove is used so if you change your mind and call bind a
                 // second time with a new function the first one is overwritten
-                if (remove && callback['combo'] == combination) {
+                if (remove && callback.combo == combination) {
                     _callbacks[character].splice(i, 1);
                 }
 
@@ -433,11 +433,11 @@ window.Mousetrap = (function() {
             // bound such as "g i" and "g t" they both need to fire the
             // callback for matching g cause otherwise you can only ever
             // match the first one
-            if (callbacks[i]['seq']) {
+            if (callbacks[i].seq) {
                 processed_sequence_callback = true;
 
                 // keep a list of which sequences were matches for later
-                do_not_reset[callbacks[i]['seq']] = 1;
+                do_not_reset[callbacks[i].seq] = 1;
                 _fireCallback(callbacks[i].callback, e);
                 continue;
             }
@@ -518,7 +518,7 @@ window.Mousetrap = (function() {
             _REVERSE_MAP = {};
             for (var key in _MAP) {
 
-                // pull out the numberic keypad from here cause keypress should
+                // pull out the numeric keypad from here cause keypress should
                 // be able to detect the keys from the character
                 if (key > 95 && key < 112) {
                     continue;
