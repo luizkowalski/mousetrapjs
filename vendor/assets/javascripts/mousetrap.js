@@ -17,7 +17,7 @@
  * Mousetrap is a simple keyboard shortcut library for Javascript with
  * no external dependencies
  *
- * @version 1.4.0
+ * @version 1.4.1
  * @url craig.is/killing/mice
  */
 (function() {
@@ -180,7 +180,7 @@
          *
          * @type {boolean|string}
          */
-        _sequenceType = false;
+        _nextExpectedAction = false;
 
     /**
      * loop through the f keys, f1 to f19 and add them to the map
@@ -291,7 +291,7 @@
         }
 
         if (!activeSequences) {
-            _sequenceType = false;
+            _nextExpectedAction = false;
         }
     }
 
@@ -302,11 +302,12 @@
      * @param {string} character
      * @param {Array} modifiers
      * @param {Event|Object} e
-     * @param {boolean=} remove - should we remove any matches
+     * @param {string=} sequenceName - name of the sequence we are looking for
      * @param {string=} combination
+     * @param {number=} level
      * @returns {Array}
      */
-    function _getMatches(character, modifiers, e, remove, combination) {
+    function _getMatches(character, modifiers, e, sequenceName, combination, level) {
         var i,
             callback,
             matches = [],
@@ -327,9 +328,9 @@
         for (i = 0; i < _callbacks[character].length; ++i) {
             callback = _callbacks[character][i];
 
-            // if this is a sequence but it is not at the right level
-            // then move onto the next match
-            if (callback.seq && _sequenceLevels[callback.seq] != callback.level) {
+            // if a sequence name is not specified, but this is a sequence at
+            // the wrong level then move onto the next match
+            if (!sequenceName && callback.seq && _sequenceLevels[callback.seq] != callback.level) {
                 continue;
             }
 
@@ -348,9 +349,14 @@
             // firefox will fire a keypress if meta or control is down
             if ((action == 'keypress' && !e.metaKey && !e.ctrlKey) || _modifiersMatch(modifiers, callback.modifiers)) {
 
-                // remove is used so if you change your mind and call bind a
-                // second time with a new function the first one is overwritten
-                if (remove && callback.combo == combination) {
+                // when you bind a combination or sequence a second time it
+                // should overwrite the first one.  if a sequenceName or
+                // combination is specified in this call it does just that
+                //
+                // @todo make deleting its own method?
+                var deleteCombo = !sequenceName && callback.combo == combination;
+                var deleteSequence = sequenceName && callback.seq == sequenceName && callback.level == level;
+                if (deleteCombo || deleteSequence) {
                     _callbacks[character].splice(i, 1);
                 }
 
@@ -490,7 +496,7 @@
         // modifier keys are ignored because you can have a sequence
         // that contains modifiers such as "enter ctrl+space" and in most
         // cases the modifier key will be pressed before the next key
-        if (e.type == _sequenceType && !_isModifier(character)) {
+        if (e.type == _nextExpectedAction && !_isModifier(character)) {
             _resetSequences(doNotReset);
         }
     }
@@ -611,90 +617,89 @@
         // and setting the level to 0
         _sequenceLevels[combo] = 0;
 
-        // if there is no action pick the best one for the first key
-        // in the sequence
-        if (!action) {
-            action = _pickBestAction(keys[0], []);
-        }
-
         /**
          * callback to increase the sequence level for this sequence and reset
          * all other sequences that were active
          *
+         * @param {string} nextAction
+         * @returns {Function}
+         */
+        function _increaseSequence(nextAction) {
+            return function() {
+                _nextExpectedAction = nextAction;
+                ++_sequenceLevels[combo];
+                _resetSequenceTimer();
+            };
+        }
+
+        /**
+         * wraps the specified callback inside of another function in order
+         * to reset all sequence counters as soon as this sequence is done
+         *
          * @param {Event} e
          * @returns void
          */
-        var _increaseSequence = function() {
-                _sequenceType = action;
-                ++_sequenceLevels[combo];
-                _resetSequenceTimer();
-            },
+        function _callbackAndReset(e) {
+            _fireCallback(callback, e, combo);
 
-            /**
-             * wraps the specified callback inside of another function in order
-             * to reset all sequence counters as soon as this sequence is done
-             *
-             * @param {Event} e
-             * @returns void
-             */
-            _callbackAndReset = function(e) {
-                _fireCallback(callback, e, combo);
+            // we should ignore the next key up if the action is key down
+            // or keypress.  this is so if you finish a sequence and
+            // release the key the final key will not trigger a keyup
+            if (action !== 'keyup') {
+                _ignoreNextKeyup = _characterFromEvent(e);
+            }
 
-                // we should ignore the next key up if the action is key down
-                // or keypress.  this is so if you finish a sequence and
-                // release the key the final key will not trigger a keyup
-                if (action !== 'keyup') {
-                    _ignoreNextKeyup = _characterFromEvent(e);
-                }
-
-                // weird race condition if a sequence ends with the key
-                // another sequence begins with
-                setTimeout(_resetSequences, 10);
-            },
-            i;
+            // weird race condition if a sequence ends with the key
+            // another sequence begins with
+            setTimeout(_resetSequences, 10);
+        }
 
         // loop through keys one at a time and bind the appropriate callback
         // function.  for any key leading up to the final one it should
         // increase the sequence. after the final, it should reset all sequences
-        for (i = 0; i < keys.length; ++i) {
-            _bindSingle(keys[i], i < keys.length - 1 ? _increaseSequence : _callbackAndReset, action, combo, i);
+        //
+        // if an action is specified in the original bind call then that will
+        // be used throughout.  otherwise we will pass the action that the
+        // next key in the sequence should match.  this allows a sequence
+        // to mix and match keypress and keydown events depending on which
+        // ones are better suited to the key provided
+        for (var i = 0; i < keys.length; ++i) {
+            var isFinal = i + 1 === keys.length;
+            var wrappedCallback = isFinal ? _callbackAndReset : _increaseSequence(action || _getKeyInfo(keys[i + 1]).action);
+            _bindSingle(keys[i], wrappedCallback, action, combo, i);
         }
     }
 
     /**
-     * binds a single keyboard combination
+     * Converts from a string key combination to an array
      *
-     * @param {string} combination
-     * @param {Function} callback
-     * @param {string=} action
-     * @param {string=} sequenceName - name of sequence if part of sequence
-     * @param {number=} level - what part of the sequence the command is
-     * @returns void
+     * @param  {string} combination like "command+shift+l"
+     * @return {Array}
      */
-    function _bindSingle(combination, callback, action, sequenceName, level) {
-
-        // store a direct mapped reference for use with Mousetrap.trigger
-        _directMap[combination + ':' + action] = callback;
-
-        // make sure multiple spaces in a row become a single space
-        combination = combination.replace(/\s+/g, ' ');
-
-        var sequence = combination.split(' '),
-            i,
-            key,
-            keys,
-            modifiers = [];
-
-        // if this pattern is a sequence of keys then run through this method
-        // to reprocess each pattern one key at a time
-        if (sequence.length > 1) {
-            _bindSequence(combination, sequence, callback, action);
-            return;
+    function _keysFromString(combination) {
+        if (combination === '+') {
+            return ['+'];
         }
+
+        return combination.split('+');
+    }
+
+    /**
+     * Gets info for a specific key combination
+     *
+     * @param  {string} combination key combination ("command+s" or "a" or "*")
+     * @param  {string=} action
+     * @returns {Object}
+     */
+    function _getKeyInfo(combination, action) {
+        var keys,
+            key,
+            i,
+            modifiers = [];
 
         // take the keys from this pattern and figure out what the actual
         // pattern is all about
-        keys = combination === '+' ? ['+'] : combination.split('+');
+        keys = _keysFromString(combination);
 
         for (i = 0; i < keys.length; ++i) {
             key = keys[i];
@@ -722,14 +727,49 @@
         // we will try to pick the best event for it
         action = _pickBestAction(key, modifiers, action);
 
-        // make sure to initialize array if this is the first time
-        // a callback is added for this key
-        if (!_callbacks[key]) {
-            _callbacks[key] = [];
+        return {
+            key: key,
+            modifiers: modifiers,
+            action: action
+        };
+    }
+
+    /**
+     * binds a single keyboard combination
+     *
+     * @param {string} combination
+     * @param {Function} callback
+     * @param {string=} action
+     * @param {string=} sequenceName - name of sequence if part of sequence
+     * @param {number=} level - what part of the sequence the command is
+     * @returns void
+     */
+    function _bindSingle(combination, callback, action, sequenceName, level) {
+
+        // store a direct mapped reference for use with Mousetrap.trigger
+        _directMap[combination + ':' + action] = callback;
+
+        // make sure multiple spaces in a row become a single space
+        combination = combination.replace(/\s+/g, ' ');
+
+        var sequence = combination.split(' '),
+            info;
+
+        // if this pattern is a sequence of keys then run through this method
+        // to reprocess each pattern one key at a time
+        if (sequence.length > 1) {
+            _bindSequence(combination, sequence, callback, action);
+            return;
         }
 
+        info = _getKeyInfo(combination, action);
+
+        // make sure to initialize array if this is the first time
+        // a callback is added for this key
+        _callbacks[info.key] = _callbacks[info.key] || [];
+
         // remove an existing match if there is one
-        _getMatches(key, modifiers, {type: action}, !sequenceName, combination);
+        _getMatches(info.key, info.modifiers, {type: info.action}, sequenceName, combination, level);
 
         // add this call back to the array
         // if it is a sequence put it at the beginning
@@ -737,10 +777,10 @@
         //
         // this is important because the way these are processed expects
         // the sequence ones to come first
-        _callbacks[key][sequenceName ? 'unshift' : 'push']({
+        _callbacks[info.key][sequenceName ? 'unshift' : 'push']({
             callback: callback,
-            modifiers: modifiers,
-            action: action,
+            modifiers: info.modifiers,
+            action: info.action,
             seq: sequenceName,
             level: level,
             combo: combination
