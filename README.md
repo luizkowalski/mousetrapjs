@@ -1,4 +1,3 @@
-[![Stories in Ready](https://badge.waffle.io/luizkowalski/mousetrapjs.png?label=ready)](https://waffle.io/luizkowalski/mousetrapjs)  
 # MousetrapJS
 Mousetrap is a simple library for handling keyboard shortcuts in Javascript, with no external dependencies.
 Documentation can be found in [here](http://craig.is/killing/mice).
