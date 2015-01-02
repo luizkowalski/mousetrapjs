@@ -17,10 +17,10 @@
  * Mousetrap is a simple keyboard shortcut library for Javascript with
  * no external dependencies
  *
- * @version 1.4.1
+ * @version 1.4.6
  * @url craig.is/killing/mice
  */
-(function() {
+(function(window, document, undefined) {
 
     /**
      * mapping of special keycodes to their corresponding keys
@@ -173,6 +173,13 @@
          * @type {boolean|string}
          */
         _ignoreNextKeyup = false,
+
+        /**
+         * temporary state where we will ignore the next keypress
+         *
+         * @type {boolean}
+         */
+        _ignoreNextKeypress = false,
 
         /**
          * are we currently inside of a sequence?
@@ -396,6 +403,36 @@
     }
 
     /**
+     * prevents default for this event
+     *
+     * @param {Event} e
+     * @returns void
+     */
+    function _preventDefault(e) {
+        if (e.preventDefault) {
+            e.preventDefault();
+            return;
+        }
+
+        e.returnValue = false;
+    }
+
+    /**
+     * stops propogation for this event
+     *
+     * @param {Event} e
+     * @returns void
+     */
+    function _stopPropagation(e) {
+        if (e.stopPropagation) {
+            e.stopPropagation();
+            return;
+        }
+
+        e.cancelBubble = true;
+    }
+
+    /**
      * actually calls the callback function
      *
      * if your callback function returns false this will use the jquery
@@ -405,24 +442,16 @@
      * @param {Event} e
      * @returns void
      */
-    function _fireCallback(callback, e, combo) {
+    function _fireCallback(callback, e, combo, sequence) {
 
         // if this event should not happen stop here
-        if (Mousetrap.stopCallback(e, e.target || e.srcElement, combo)) {
+        if (Mousetrap.stopCallback(e, e.target || e.srcElement, combo, sequence)) {
             return;
         }
 
         if (callback(e, combo) === false) {
-            if (e.preventDefault) {
-                e.preventDefault();
-            }
-
-            if (e.stopPropagation) {
-                e.stopPropagation();
-            }
-
-            e.returnValue = false;
-            e.cancelBubble = true;
+            _preventDefault(e);
+            _stopPropagation(e);
         }
     }
 
@@ -474,7 +503,7 @@
 
                 // keep a list of which sequences were matches for later
                 doNotReset[callbacks[i].seq] = 1;
-                _fireCallback(callbacks[i].callback, e, callbacks[i].combo);
+                _fireCallback(callbacks[i].callback, e, callbacks[i].combo, callbacks[i].seq);
                 continue;
             }
 
@@ -496,9 +525,22 @@
         // modifier keys are ignored because you can have a sequence
         // that contains modifiers such as "enter ctrl+space" and in most
         // cases the modifier key will be pressed before the next key
-        if (e.type == _nextExpectedAction && !_isModifier(character)) {
+        //
+        // also if you have a sequence such as "ctrl+b a" then pressing the
+        // "b" key will trigger a "keypress" and a "keydown"
+        //
+        // the "keydown" is expected when there is a modifier, but the
+        // "keypress" ends up matching the _nextExpectedAction since it occurs
+        // after and that causes the sequence to reset
+        //
+        // we ignore keypresses in a sequence that directly follow a keydown
+        // for the same character
+        var ignoreThisKeypress = e.type == 'keypress' && _ignoreNextKeypress;
+        if (e.type == _nextExpectedAction && !_isModifier(character) && !ignoreThisKeypress) {
             _resetSequences(doNotReset);
         }
+
+        _ignoreNextKeypress = processedSequenceCallback && e.type == 'keydown';
     }
 
     /**
@@ -522,7 +564,8 @@
             return;
         }
 
-        if (e.type == 'keyup' && _ignoreNextKeyup == character) {
+        // need to use === for the character check because the character can be 0
+        if (e.type == 'keyup' && _ignoreNextKeyup === character) {
             _ignoreNextKeyup = false;
             return;
         }
@@ -891,7 +934,7 @@
             }
 
             // stop for input, select, and textarea
-            return element.tagName == 'INPUT' || element.tagName == 'SELECT' || element.tagName == 'TEXTAREA' || (element.contentEditable && element.contentEditable == 'true');
+            return element.tagName == 'INPUT' || element.tagName == 'SELECT' || element.tagName == 'TEXTAREA' || element.isContentEditable;
         },
 
         /**
@@ -907,4 +950,4 @@
     if (typeof define === 'function' && define.amd) {
         define(Mousetrap);
     }
-}) ();
+}) (window, document);
