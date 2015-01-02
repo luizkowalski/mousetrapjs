@@ -1,3 +1,3 @@
 module Mousetrapjs
-  VERSION = "1.4.1"
+  VERSION = "1.4.6"
 end
